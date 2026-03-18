@@ -81,14 +81,14 @@ def _oncall(a):
 
 def handle_tool(name,args):
     args=args or {}
-    return {"issue.create":_create,"issue.comment":_comment,"issue.transition":_transition,"issue.search":_search,"team.oncall_lookup":_oncall}.get(name,lambda a:{"error":f"Unknown tool: {name}"})(args)
+    return {"issue_create":_create,"issue_comment":_comment,"issue_transition":_transition,"issue_search":_search,"team_oncall_lookup":_oncall}.get(name,lambda a:{"error":f"Unknown tool: {name}"})(args)
 
 TOOLS = [
-    {"name":"issue.create","description":"Create a Jira issue in PAY project. Returns new issue key.","inputSchema":{"type":"object","properties":{"summary":{"type":"string"},"description":{"type":"string","default":""},"type":{"type":"string","default":"Task"},"priority":{"type":"string","default":"Medium"},"assignee":{"type":"string","default":""},"labels":{"type":"string","default":""}},"required":["summary"]}},
-    {"name":"issue.comment","description":"Add comment to a Jira issue.","inputSchema":{"type":"object","properties":{"issue_key":{"type":"string"},"body":{"type":"string"},"author":{"type":"string","default":"mcp-agent@bank.internal"}},"required":["issue_key","body"]}},
-    {"name":"issue.transition","description":"Transition issue status. Valid: To Do, In Progress, In Review, Done, Resolved, Closed.","inputSchema":{"type":"object","properties":{"issue_key":{"type":"string"},"status":{"type":"string"}},"required":["issue_key","status"]}},
-    {"name":"issue.search","description":"Search issues with JQL. Supports: status=X, priority=X, labels in (a,b). Combine with AND.","inputSchema":{"type":"object","properties":{"jql":{"type":"string"},"limit":{"type":"integer","default":20}},"required":["jql"]}},
-    {"name":"team.oncall_lookup","description":"Look up on-call engineer for a service/team.","inputSchema":{"type":"object","properties":{"team":{"type":"string"}},"required":["team"]}},
+    {"name":"issue_create","description":"Create a Jira issue in PAY project. Returns new issue key.","inputSchema":{"type":"object","properties":{"summary":{"type":"string"},"description":{"type":"string","default":""},"type":{"type":"string","default":"Task"},"priority":{"type":"string","default":"Medium"},"assignee":{"type":"string","default":""},"labels":{"type":"string","default":""}},"required":["summary"]}},
+    {"name":"issue_comment","description":"Add comment to a Jira issue.","inputSchema":{"type":"object","properties":{"issue_key":{"type":"string"},"body":{"type":"string"},"author":{"type":"string","default":"mcp-agent@bank.internal"}},"required":["issue_key","body"]}},
+    {"name":"issue_transition","description":"Transition issue status. Valid: To Do, In Progress, In Review, Done, Resolved, Closed.","inputSchema":{"type":"object","properties":{"issue_key":{"type":"string"},"status":{"type":"string"}},"required":["issue_key","status"]}},
+    {"name":"issue_search","description":"Search issues with JQL. Supports: status=X, priority=X, labels in (a,b). Combine with AND.","inputSchema":{"type":"object","properties":{"jql":{"type":"string"},"limit":{"type":"integer","default":20}},"required":["jql"]}},
+    {"name":"team_oncall_lookup","description":"Look up on-call engineer for a service/team.","inputSchema":{"type":"object","properties":{"team":{"type":"string"}},"required":["team"]}},
 ]
 
 SERVER_INFO={"name":"jira-mcp","version":"1.0.0"}; CAPS={"tools":{}}
