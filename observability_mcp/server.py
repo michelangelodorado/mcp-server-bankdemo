@@ -78,11 +78,11 @@ def _gen_deploys():
     return [{"id":"deploy-4471","service":"fraud-engine","version":"2.14.0-rc3","description":"Updated fraud rule: lowered velocity threshold from 8 to 3 txns/min for high-risk MCCs","deployed_by":"sarah.chen@bank.internal","timestamp":DEPLOY_TIME.isoformat(),"status":"completed","change_ticket":"CHG-8834"},{"id":"deploy-4470","service":"card-auth-service","version":"5.2.1","description":"Routine dependency bump no logic changes","deployed_by":"ci-pipeline","timestamp":(DEPLOY_TIME-timedelta(hours=3)).isoformat(),"status":"completed","change_ticket":"CHG-8820"},{"id":"deploy-4469","service":"mobile-app","version":"4.17.0","description":"UI polish for card management screen","deployed_by":"ci-pipeline","timestamp":(DEPLOY_TIME-timedelta(hours=8)).isoformat(),"status":"completed","change_ticket":"CHG-8815"}]
 
 TOOLS = [
-    {"name":"metrics.query_range","description":"Query time-series metrics for a service. Metrics: latency_p99_ms, latency_p50_ms, error_rate, db_pool_active_connections, db_pool_wait_time_ms, requests_per_second, cpu_percent","inputSchema":{"type":"object","properties":{"service":{"type":"string","description":"Service name e.g. card-auth-service"},"metric":{"type":"string","description":"Metric name"},"start":{"type":"string","description":"Start time ISO-8601 or -60m"},"end":{"type":"string","description":"End time or now"},"step_seconds":{"type":"integer","default":60}},"required":["service","metric"]}},
-    {"name":"metrics.topk","description":"Top slow endpoints or dependencies","inputSchema":{"type":"object","properties":{"type":{"type":"string","default":"endpoints"},"k":{"type":"integer","default":5}}}},
-    {"name":"logs.search","description":"Search structured logs. Find DB timeouts, connection pool errors, payment failures.","inputSchema":{"type":"object","properties":{"service":{"type":"string","default":""},"level":{"type":"string","default":"ALL"},"search":{"type":"string","default":""},"limit":{"type":"integer","default":30}}}},
-    {"name":"deploys.list","description":"List recent deployments. Correlate incidents with rollouts.","inputSchema":{"type":"object","properties":{"service":{"type":"string","default":""},"limit":{"type":"integer","default":10}}}},
-    {"name":"service.dependencies","description":"Service dependency graph showing call chains.","inputSchema":{"type":"object","properties":{"service":{"type":"string","default":""}}}},
+    {"name":"metrics_query_range","description":"Query time-series metrics for a service. Metrics: latency_p99_ms, latency_p50_ms, error_rate, db_pool_active_connections, db_pool_wait_time_ms, requests_per_second, cpu_percent","inputSchema":{"type":"object","properties":{"service":{"type":"string","description":"Service name e.g. card-auth-service"},"metric":{"type":"string","description":"Metric name"},"start":{"type":"string","description":"Start time ISO-8601 or -60m"},"end":{"type":"string","description":"End time or now"},"step_seconds":{"type":"integer","default":60}},"required":["service","metric"]}},
+    {"name":"metrics_topk","description":"Top slow endpoints or dependencies","inputSchema":{"type":"object","properties":{"type":{"type":"string","default":"endpoints"},"k":{"type":"integer","default":5}}}},
+    {"name":"logs_search","description":"Search structured logs. Find DB timeouts, connection pool errors, payment failures.","inputSchema":{"type":"object","properties":{"service":{"type":"string","default":""},"level":{"type":"string","default":"ALL"},"search":{"type":"string","default":""},"limit":{"type":"integer","default":30}}}},
+    {"name":"deploys_list","description":"List recent deployments. Correlate incidents with rollouts.","inputSchema":{"type":"object","properties":{"service":{"type":"string","default":""},"limit":{"type":"integer","default":10}}}},
+    {"name":"service_dependencies","description":"Service dependency graph showing call chains.","inputSchema":{"type":"object","properties":{"service":{"type":"string","default":""}}}},
 ]
 
 def _parse_time(val, default):
@@ -95,18 +95,18 @@ def _parse_time(val, default):
 
 def handle_tool(name, args):
     args=args or {}
-    if name=="metrics.query_range":
+    if name=="metrics_query_range":
         svc=args.get("service","card-auth-service"); m=args.get("metric","latency_p99_ms")
         s=_parse_time(args.get("start","-60m"),WINDOW_START); e=_parse_time(args.get("end","now"),NOW); step=int(args.get("step_seconds",60))
         pts=_gen_ts(svc,m,s.timestamp(),e.timestamp(),step)
         return {"service":svc,"metric":m,"start":s.isoformat(),"end":e.isoformat(),"step_seconds":step,"datapoints":pts,"summary":{"count":len(pts),"min":round(min(p[1] for p in pts),3) if pts else 0,"max":round(max(p[1] for p in pts),3) if pts else 0,"avg":round(sum(p[1] for p in pts)/len(pts),3) if pts else 0}}
-    if name=="metrics.topk": return {"type":args.get("type","endpoints"),"results":_gen_topk(args.get("type","endpoints"))[:int(args.get("k",5))]}
-    if name=="logs.search": return {"total_matched":0,"entries":_gen_logs(args.get("service",""),args.get("level","ALL"),int(args.get("limit",30)),args.get("search",""))}
-    if name=="deploys.list":
+    if name=="metrics_topk": return {"type":args.get("type","endpoints"),"results":_gen_topk(args.get("type","endpoints"))[:int(args.get("k",5))]}
+    if name=="logs_search": return {"total_matched":0,"entries":_gen_logs(args.get("service",""),args.get("level","ALL"),int(args.get("limit",30)),args.get("search",""))}
+    if name=="deploys_list":
         d=_gen_deploys(); svc=args.get("service","")
         if svc: d=[x for x in d if x["service"]==svc]
         return {"deploys":d[:int(args.get("limit",10))]}
-    if name=="service.dependencies":
+    if name=="service_dependencies":
         svc=args.get("service","")
         return {"root":svc,"graph":{svc:DEPENDENCY_MAP[svc]}} if svc and svc in DEPENDENCY_MAP else {"graph":DEPENDENCY_MAP}
     return {"error":f"Unknown tool: {name}"}
