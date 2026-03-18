@@ -1,9 +1,10 @@
 """Jira MCP Server with SSE + WebSocket transports."""
-import asyncio, json, logging, random, re, sys, uuid
+import asyncio, json, logging, re, sys, uuid
 from datetime import datetime, timedelta, timezone
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 from sse_starlette.sse import EventSourceResponse
+from starlette.middleware.cors import CORSMiddleware
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s", stream=sys.stderr)
 logger = logging.getLogger("jira_mcp")
@@ -45,21 +46,23 @@ def _next():
 
 def _create(a):
     k=_next(); labels=[l.strip() for l in a.get("labels","").split(",") if l.strip()] if isinstance(a.get("labels"),str) else a.get("labels",[])
-    iss={"key":k,"summary":a.get("summary","New issue"),"description":a.get("description",""),"type":a.get("type","Task"),"priority":a.get("priority","Medium"),"status":"To Do","assignee":a.get("assignee",""),"labels":labels,"created":NOW.isoformat(),"updated":NOW.isoformat(),"comments":[]}
+    now=datetime.now(timezone.utc).isoformat()
+    iss={"key":k,"summary":a.get("summary","New issue"),"description":a.get("description",""),"type":a.get("type","Task"),"priority":a.get("priority","Medium"),"status":"To Do","assignee":a.get("assignee",""),"labels":labels,"created":now,"updated":now,"comments":[]}
     ISSUES[k]=iss; return {"key":k,"self":f"https://jira.bank.internal/browse/{k}","status":"To Do","summary":iss["summary"]}
 
 def _comment(a):
     k=a.get("issue_key","")
     if k not in ISSUES: return {"error":f"Issue {k} not found"}
-    c={"id":uuid.uuid4().hex[:8],"author":a.get("author","mcp-agent@bank.internal"),"body":a.get("body",""),"created":NOW.isoformat()}
-    ISSUES[k]["comments"].append(c); ISSUES[k]["updated"]=NOW.isoformat(); return {"issue_key":k,"comment_id":c["id"],"status":"added"}
+    now=datetime.now(timezone.utc).isoformat()
+    c={"id":uuid.uuid4().hex[:8],"author":a.get("author","mcp-agent@bank.internal"),"body":a.get("body",""),"created":now}
+    ISSUES[k]["comments"].append(c); ISSUES[k]["updated"]=now; return {"issue_key":k,"comment_id":c["id"],"status":"added"}
 
 def _transition(a):
     k=a.get("issue_key",""); tgt=a.get("status","")
     if k not in ISSUES: return {"error":f"Issue {k} not found"}
     cur=ISSUES[k]["status"]; ok=TRANSITIONS.get(cur,[])
     if tgt not in ok: return {"error":f"Cannot transition from '{cur}' to '{tgt}'. Allowed: {ok}"}
-    ISSUES[k]["status"]=tgt; ISSUES[k]["updated"]=NOW.isoformat(); return {"issue_key":k,"previous_status":cur,"new_status":tgt}
+    ISSUES[k]["status"]=tgt; ISSUES[k]["updated"]=datetime.now(timezone.utc).isoformat(); return {"issue_key":k,"previous_status":cur,"new_status":tgt}
 
 def _search(a):
     jql=a.get("jql",""); lim=int(a.get("limit",20)); res=list(ISSUES.values()); jl=jql.lower()
@@ -97,7 +100,7 @@ def rpc_err(rid,c,m): return {"jsonrpc":"2.0","id":rid,"error":{"code":c,"messag
 
 def handle_msg(raw):
     try: msg=json.loads(raw) if isinstance(raw,(str,bytes)) else raw
-    except: return rpc_err(None,-32700,"Parse error")
+    except Exception: return rpc_err(None,-32700,"Parse error")
     rid=msg.get("id"); method=msg.get("method",""); params=msg.get("params",{})
     logger.info("MCP: method=%s id=%s",method,rid)
     if method=="initialize": return rpc_ok(rid,{"protocolVersion":"2024-11-05","serverInfo":SERVER_INFO,"capabilities":CAPS})
@@ -113,6 +116,7 @@ def handle_msg(raw):
     return rpc_err(rid,-32601,f"Method not found: {method}")
 
 app = FastAPI(title="Jira MCP Server")
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 sse_sessions = {}
 
 @app.get("/health")

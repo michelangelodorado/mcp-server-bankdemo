@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 from sse_starlette.sse import EventSourceResponse
+from starlette.middleware.cors import CORSMiddleware
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s", stream=sys.stderr)
 logger = logging.getLogger("observability_mcp")
@@ -89,9 +90,9 @@ def _parse_time(val, default):
     if not val or val=="now": return NOW
     if val.startswith("-") and val.endswith("m"):
         try: return NOW-timedelta(minutes=int(val[1:-1]))
-        except: pass
+        except Exception: pass
     try: return datetime.fromisoformat(val.replace("Z","+00:00"))
-    except: return default
+    except Exception: return default
 
 def handle_tool(name, args):
     args=args or {}
@@ -101,7 +102,9 @@ def handle_tool(name, args):
         pts=_gen_ts(svc,m,s.timestamp(),e.timestamp(),step)
         return {"service":svc,"metric":m,"start":s.isoformat(),"end":e.isoformat(),"step_seconds":step,"datapoints":pts,"summary":{"count":len(pts),"min":round(min(p[1] for p in pts),3) if pts else 0,"max":round(max(p[1] for p in pts),3) if pts else 0,"avg":round(sum(p[1] for p in pts)/len(pts),3) if pts else 0}}
     if name=="metrics_topk": return {"type":args.get("type","endpoints"),"results":_gen_topk(args.get("type","endpoints"))[:int(args.get("k",5))]}
-    if name=="logs_search": return {"total_matched":0,"entries":_gen_logs(args.get("service",""),args.get("level","ALL"),int(args.get("limit",30)),args.get("search",""))}
+    if name=="logs_search":
+        entries=_gen_logs(args.get("service",""),args.get("level","ALL"),int(args.get("limit",30)),args.get("search",""))
+        return {"total_matched":len(entries),"entries":entries}
     if name=="deploys_list":
         d=_gen_deploys(); svc=args.get("service","")
         if svc: d=[x for x in d if x["service"]==svc]
@@ -119,7 +122,7 @@ def rpc_err(rid,code,msg): return {"jsonrpc":"2.0","id":rid,"error":{"code":code
 
 def handle_msg(raw):
     try: msg=json.loads(raw) if isinstance(raw,(str,bytes)) else raw
-    except: return rpc_err(None,-32700,"Parse error")
+    except Exception: return rpc_err(None,-32700,"Parse error")
     rid=msg.get("id"); method=msg.get("method",""); params=msg.get("params",{})
     logger.info("MCP: method=%s id=%s",method,rid)
     if method=="initialize": return rpc_ok(rid,{"protocolVersion":"2024-11-05","serverInfo":SERVER_INFO,"capabilities":CAPS})
@@ -135,6 +138,7 @@ def handle_msg(raw):
     return rpc_err(rid,-32601,f"Method not found: {method}")
 
 app = FastAPI(title="Observability MCP Server")
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 sse_sessions = {}
 
 @app.get("/health")
